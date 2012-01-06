@@ -1,0 +1,1024 @@
+
+Title		:	Writeup for Project 3, Spring2009 
+
+Date 		:	April,1,2009
+
+GROUP NO	:	12
+				
+			
+                     Names                		Email             	Student ID
+                     =====                		=====            	==========        
+                
+      		ASHWIN KUMAR GOPI VALLIAMMAL   	 gopivall@usc.edu      		3130-1670-45
+                LEE HOW KOH         		 leehowak@usc.edu		1590-5838-19 
+            	RAMKUMAR RAJENDRAN       	 rsrajend@usc.edu		5333-5089-11
+
+
+VIRTUAL MEMORY AND BASIC NETWORKING 
+*************************************
+		 
+
+							
+I. Requirements:
+================
+
++ Need to Implement Software-Management of the Translation Lookaside Buffer [TLB] 
+---------------------------------------------------------------------------------- 
+ 		
+		- TLB contains the recently accessed virtual pages and their location in physical memory which should be valid for the only the current thread
+
+		- In Nachos, the maximum number of entries in the TLB is four.
+
+		- In Project3 when the user programs are run from vm directory Instead of Page Table, Nachos uses TLB for address translation.
+
+		- And if the needed virtual page is not in the TLB, then Nachos produces a Page Fault Exception.
+		
+		- In order to handle the TLB misses, a the Inverted Page Table also known as IPT has to be implemented.
+
+		- If the entry is found in the IPT, then load the data into the Translation lookaside Buffer.  
+	
+		- The main feature of IPT is that the indexing is from Physical memory page to a Virtual page.
+
+		- A valid bit is used in the IPT to check whether the entry is used or not.
+
+		- And a dirty bit is used to check whether a page is modified or not, if modified set the dirty bit to 1.
+	
+		- And if a entry is not in IPT then go to translation table, check for the entry.
+
+		- If a entry is found in translation table then, update the IPT and the TLB for future use of the page.
+		
++ Implement virtual memory 
+-------------------------  
+
+		- We use a Demand Paged Virtual memory technique i.e, don't preload anything into the physical memory until needed.
+
+		- On a Page fault Exception and an IPT miss, ONLY the needed page is loaded into the memory.
+
+		- Nachos can hold upto 32 pages in the physical memory, and if the memory becomes full then a page which is already in the memory has to be evicted.
+
+ 		- If the page which is evicted is dirty (modified), then we must write to the disk but we can't use executable.
+
+		- A swap file is used to store all the evicted dirty pages.
+		
+		- A single swap file is created to handle all Nachos processes and threads also it has to be organised in pages.
+	
+		- Similar to translation table, a bitmap is used to find a empty slot in the swap file.
+
+		- Page replacement policies like Random and FIFO are implemented, for replacing a incoming page with page in the memory.
+
+		- The dirty evicted page is moved to the swap file and the page entry for that page is updated.
+		
+		- When there is need to load back a page from the swap file, we load it to main memory from the swap file and leave copy of that 
+		page in the swap file and so the pages that are now loaded into memory from the swap file is not dirty.
+		
+		
++ Implement RPC for Lock and Condition Variable system calls 
+-------------------------------------------------------------------------------------  
+ 
+		- Using Remote Procedure Calls(RPC), the request to execute a section of code, traverses a network to get to the remote machine.
+
+		- The system calls are to be sent from a "client",instance of Nachos to a "server" instance of Nachos.
+		
+		- The server must be capable of handling multiple clients
+ 
+ 		- The system calls implemented in Project 2 must be modified to Remote Procedure Calls.
+
+		- A single server is built into the kernel, so it cannot run user programs.
+
+		- The job of the server is to handle the lock and condition variables requests.
+
+		- Distributed Locks and Condition variables are being developed.
+
+		- The locks and condition variables in the exception.cc are modified to handle across process services.
+ 
+		- This allows any user program, on any Nachos client, to share a Lock/C.V's with any user program.
+
+		- The server maintains a "List", by name of the locks and the Condition Variables it has created.
+		
+		- The Client stub and the Server stub programs are used to do the networking.
+
+		- The Send and Recieve methods in Post Office object are used to send and recieve the messages.
+
+
+II. Assumptions:
+================
+
+	Part-I and II:
+	--------------
+    
+        	- The total number of physical pages in the Inverted Page table is equal to the NumPhyPages which si 32
+	  	
+		- Nachos is capable of holding only four entries in the Translation Lookaside Buffer.	
+
+       		- The value of the NumPhyPages entry is set to 32.
+
+		- There's only one swap file for all processes
+		
+		- Swap file can hold a maximum of 65536 entries of dirty evicted pages
+   
+
+    	Part-III:
+    	---------
+
+		- This is considered as a reliable network where there is no packet loss
+		
+		- There is no re-tranmission of data
+	
+		- There is only one single threaded server which continuously listens for client requests
+
+		- Clients are single threaded
+
+
+III. Design:
+============
+   
+ 
+	Part I and II:
+	**************
+
+
+	+ Implement Software-Management of the Translation Lookaside Buffer [TLB] 
+        -----------------------------------------------------------------------  
+ 		
+
+		Step 1:
+		*******
+					
+				- The TLB population code is written in "execption.cc"
+	
+				- The interrupt is turned OFF while accessing the TLB.
+
+				- TLB is a translation entry array, and all the fields of the TLB are similar to Page Table.
+	
+				- The Translation Lookaside Buffer is created using the TranslationEntry defined in translate.h
+
+				- The virtual address of the page is stored in the BAdVAddr.Reg.
+
+				- The Virtual Address divided by Page Size gives the Virtual Page Number	
+			
+				- The Vitual Page Number is used as a index for location in the page table.
+							
+			 	- All the fields at that location is copied into the translation lookaside buffer.
+
+				- The TLB valid bit is now set to True.
+
+				- The First In First Out(FIFO) method is used to find a good slot in TLB.
+
+				- A global counter called the currentTLB is created for locating TLB.
+
+				- The  variable tlbIndex is used as a TLB array index when adding entries to TLB.
+
+				- The counter is incremented on the addition of the entries, and range is 0-3.  
+	
+				- When the range of the TLB is exceeded i.e., when it becomes full, the page which has the longest stay is replaced.
+
+				- The TLB entries are invalidated on a context switch. 
+				
+				- Still the main memory is large enough to hold all the threads and processs
+
+
+
+		Step 2:
+		*******
+
+				- The Inverted Page Table is implemented.
+
+				- The Inverted Page Table population code is added in the address space constructor.
+
+				- The Inverted Page Table is indexed by Physical Page number, an array is used for this purpose.
+
+				- The IPT is a array of objects similar to TranslationEntry, but IPT also has pointer to keep track of the process information.In our case we have used an addrspace pointer to store the address space of the process that
+
+				- The array size is equal to the NumPhyPages
+ 
+				- On a Page fault exception, instead of looking into page table, we look into the IPT for populating TLB.
+
+				- Since everything is pre-loaded into memory, we always find the virtual page in IPT
+				
+				- Once found in IPT, populate TLB with IPT
+				
+				- Still the main memory is large enough to hold all the threads and processs
+
+
+
+  
+	+ Implement virtual memory 
+          ------------------------  
+
+
+		     Step 3:
+		     *******	
+			
+				- Now the pages are not preloaded into the physical memory, unless it is required i.e., on a Page fault exception.
+
+				- So, the Read At in the AddressSpace constructor in the address.cc is removed.
+
+				- No memory is allocated for any page table entries instead their the disk location of the virtual pages are stored.
+
+				- Inorder to handle the IPT misses the PageTable definition has to be changed.
+				
+				- On a Page fault exception and an IPT miss, we load the needed page only.
+				
+				- So now the ReadAt statement is moved to exception.cc page fault handling code
+				
+				- Then the Translation Lookaside Buffer, Inverted Page Table and entry in the Page table are updated.
+				
+				- Still the main memory is large enough to hold all the threads and processs
+
+			
+		     Step 4:
+		     *******
+
+				- Now we are setting the NumPhysPages back to 32.
+
+				- On a Page Fault exception, a page already residing in the memory is evicted and the needed page is loaded.
+
+				- In order to replace a page, Page Repalcement policies like Random and FIFO are being implemented in exception.cc.
+			
+				- The dirty pages are swapped to the swap file.
+				
+				
++ Final design of Page fault handler code segement :
+----------------------------------------------------
+ void HandlePageFault(int badVirtAddr)
+{
+						
+	calculate the bad virtual page number from the bad virual address
+		
+	find a  tlb entry where the information about this new page has to be updated						
+
+	if("the selected tlb entry is valid and dirty")	
+	{
+		propagate the tlb information to the ipt
+	}
+
+	for(int i=0;i<NumPhysPages;i++) 
+	{
+		search the ipt
+		if("found in ipt")
+		{
+			get the ipt index
+		}
+	}
+	if("the ipt index is >=0 the bad virtual page is found in ipt ") 
+	{
+
+		update the tlb accordingly
+			
+	}
+	else 
+	{
+		we have an ipt miss
+		find a free page is memory using bitmap find()
+		
+		if( freepage number is < 0) 
+		{
+			// the main memory is full
+			
+			find a page to evict using any one of the page replacement policy
+			
+			check if the page selected for eviction in tlb
+			
+			if found and if dirty progpagate the information to the ipt.
+			
+			check if the page selected for eviction is dirty in the ipt
+			
+			if so write it to the swap file
+	
+			find the disklocation the bad virtual page number from the page tables
+			
+			load it into the main memory
+			
+			if the dislocation is the swap file we load the page from te swap file and don't delete the entry
+			so the newly loaded pages are not ditry
+
+			update the page table
+				
+			update the ipt
+
+			update the tlb
+
+		}
+		else 
+		{
+			// main memory is not full
+			
+			find the disklocation the bad virtual page number from the page tables
+			
+			load it into the main memory
+			
+			if the dislocation is the swap file we load the page from te swap file and don't delete the entry
+			so the newly loaded pages are not ditry
+
+			update the page table
+				
+			update the ipt
+
+			update the tlb;
+		}
+	}
+	
+	incement the current tlb counter.
+}
+
+
+    Part-III:
+    ********
+
++ Implement RPC for Lock and Condition Variable system calls implemented in Project 2
+-----------------------------------------------------------------------------------  
+
+		
+- By making changes in the Makefile in the network directory, it is made to look like Makefile of Userprog directory and network extras are included.
+		
+- The system calls in the exception.cc are modified to handle Remote Procedure Calls.
+
+- The server handles the lock and condition variables requests.
+
+		
+Instance of The Server - Syscall as RPC's
+=========================================
+
+- Wait for a Request message 
+		
+- once Recieved,Parse the Request message 
+
+- Check what is the Request and the parameters
+
+- Validate the parameters	
+
+- Perform the operation required
+
+- The Reply message is then created 
+
+- The Reply messages are then sent at the appropriate time
+
+
+		- createRemoteLock();
+		------------------------
+		
+			- If the first bit of the data obtained from the client is 101, then the server executes this function
+
+			- Here the lock name that needs to be created is received from the client
+			
+			- Server checks whether the lock is created or not
+
+			- If (The lock is already created yet)
+			 
+			 {
+
+				Send the lock id to the client
+			 }
+
+			else
+
+			 {
+			
+				Create a new lock (Update the data structures)
+			
+				Send the new lock id to the client
+				
+			 }
+			 
+		- AcquireRemoteLock();  
+		---------------------------
+
+			- If the first bit of the data obtained from the client is 102, then the server calls this function
+
+			- Here the lock id that needs to be acquired is received from the client
+
+			- Server checks whether the lock is created or not
+
+			- If the lock is not created yet, an negative acknowlegment is sent
+					
+			- Check whether the lock is busy or not
+	
+			- If the lock is not busy, 
+				
+				{
+				   send the message to the client;
+
+				}
+			  else
+			
+				{
+				  	
+				   append this acquire request to the wait queue
+				   no reply is sent here
+
+				}
+				
+		- ReleaseRemoteLock();
+		------------------------
+
+			- If the first bit of the data obtained from the client is 103, then the server calls this function
+
+			- Here the lock id that needs to be released is received from the client
+
+			- Server checks whether the lock is created or not
+
+			- If the lock is not created yet, send an error message to the client
+
+			- Check whether the lock ownership is valid
+
+			- If (valid)
+
+			  {
+
+				If ( The wait queue is empty ) 			
+
+				{
+			
+					Make the lock free
+					
+
+					Send reply to the client who is requesting the release operation
+			
+				}
+
+				else
+
+
+				{
+
+					Remove the first request from the waiting queue
+		
+					& Send the lock id to the client waiting for the lock
+
+					Send reply to the client who is requesting the release operation
+					
+				}
+
+
+			  }
+
+			  else
+
+			  {
+
+				Send an error message to the  client indicating that he doesnt own the lock
+
+			  }
+			  
+		- DestroyRemoteLock()
+		----------------------
+
+
+			- If the first bit of the data obtained from the client is 104, then the server invokes this function
+
+			- Here the lock id that needs to be destoyed is received from the client
+
+			- Server checks whether the lock is created or not
+
+			- If the lock is not created yet, send an error message to the client
+
+			- If is lock is already created check if any one is waiting in the locks wait queue
+			
+			- if some one is waiting send error message lock cannot be destroyed
+			
+			- if (wait queue is empty)
+			{
+				destroy the lock and send rpely message to the client.
+			}
+
+		-CreateRemoteCondition(); 
+		--------------------------
+
+			- If the first bit of the data obtained from the client is 105, then the server calls this function
+
+			- Here the condition name is received from the client
+
+			- Server checks whether the condition is created or not
+
+			- If (The condition is already created yet)
+			 
+			 {
+
+				Send the condition id to the client
+			 }
+
+			else
+
+			 {
+			
+				Create a new condition (Update the data structures)
+			
+				Send the new condition id to the client
+				
+			 }
+		- DestroyRemoteCondition()
+		--------------------------
+
+			- If the first bit of the data obtained from the client is 106, then the server invokes this function
+
+			- Here the condition id that needs to be destoyed is received from the client
+
+			- Server checks whether the condition is created or not
+
+			- If the condition is not created yet, send an error message to the client
+
+			- else see if some one is waiitng in the conditions wait queue
+			
+			- if(found waiting)
+			{
+				send error msg to client
+			}
+			else
+			{
+				destroy the condition.
+			}
+
+		- WaitRemoteCondition();
+		----------------------------
+		
+
+			- If the first bit of the data obtained from the client is 107, then the server invokes this function
+
+			- Here the condition id and lock id are received from the client
+
+			- Server checks whether the condition id and lock id are created or not
+
+			- If the lock or condition is not created yet, send an error message to the client
+
+			   	return error msg 
+
+
+			- Check for the ownership of the lock
+
+			- If (owner)
+
+			  {
+
+				Check whether condition's lock is free
+
+				If (yes)
+
+				{
+
+					store the lock Id
+
+				}
+
+				check if the lockid matched the conditions lock id
+				if(yes)
+
+				{
+
+								
+					Append to the condition wait queue to make the client wait on the condition
+					
+					// releasing the lock
+					
+					If ( The lock wait queue is empty ) 			
+
+					{
+			
+						Make the lock free
+					
+
+					}
+
+					else
+
+					{
+
+						Remove the first request from the lock waiting queue
+						send a reply message to the removed request.
+		
+					}
+
+				}
+
+				else
+
+				{
+
+					Send a reply to the client indicating that Condition doesnt have this lock    
+				}
+
+			  else
+
+			  {
+
+					Send a reply to the client indicating that he's not the owner of the lock
+
+			  }
+			  
+- SignalRemoteCondition()
+----------------------------
+{
+	- check if the lock and the condition is already created
+	if(both are created) 
+	{
+		-check the lock ownership
+		if(owner) 
+		{
+			-check if the conditions locks and the requested lock matches
+			if(match)
+			{
+				-check if the conditions wait queue is empty
+				if(empty)
+				{
+					// no one to signal 
+					send a reply msg to the client
+
+				}
+				else
+				{
+					// condition queue is not empty
+					- remove one machine id from the queue
+					- call Acquire lock with that mahcine id
+					- send a reply message to the client who signaled
+
+				}
+
+			}
+			else 
+			{
+				send a reply message saying the lock mismatch
+			}
+		}
+		else
+		{
+			send a reply message that the machine is not the owner 
+		}
+	}
+	else
+	{
+		send a reply message that either the lock or condition variable is not yet created.
+	}
+}
+
+BroadcastRemoteCondition()
+{
+	- check if the lock and the condition is already created
+	if(both are created) 
+	{
+		-check the lock ownership
+		if(owner) 
+		{
+			-check if the conditions locks and the requested lock matches
+			if(match)
+			{
+				-check if the conditions wait queue is empty
+				if(empty)
+				{
+					// no one to signal 
+					send a reply msg to the client
+
+				}
+				else
+				{
+					// condition queue is not empty
+					- while the queue becomes empty
+					- remove one machine id from the queue
+					- call Acquire lock with that mahcine id
+					- send a reply message to the client who signaled
+
+				}
+
+			}
+			else 
+			{
+				send a reply message saying the lock mismatch
+			}
+		}
+		else
+		{
+			send a reply message that the machine is not the owner 
+		}
+	}
+	else
+	{
+		send a reply message that either the lock or condition variable is not yet created.
+	}
+
+}
+
+Instance of The Client Nachos   
+-----------------------------
+
+- The syscall type is determined.
+- The parameters are then got and validated.
+- A request message is then created and sent to the Server.
+- The Client then waits for a reply from the Server.	
+- On recieving the reply message return to the user program.
+                  
+   
+IV. Implementation:
+===================
+
+	+ Files Modified
+	-----------------
+      
+            - system.h
+            - system.cc
+            - exception.cc
+            - machine.h
+            - addrspace.h 
+            - addrspace.cc
+            - progtest.c
+            - Makefile
+	    - nettest.cc
+	    - main.cc
+	    
+         + Files Added
+   	 --------------
+
+		- Part I and II
+		---------------
+	
+			
+		    - Test Directory
+		
+			+forkMatmult.c
+			+forkSort.c
+			+forkMatmultSort.c
+			+execMatmult.c
+			+execSort.c
+			+execMatMultSort.c
+
+ 
+		- Part III
+		-----------
+	
+			
+		    - Test Directory
+
+			+testRpcCondition.c
+			+testRpcCondition1.c
+			+testRpcLock.c
+			+testRpcLock1.c
+			+testRpcLock2.c
+			+testRpcLock3.c
+			+testRpcCondition2.c
+			+testRpcCondition3.c
+
+
+         + Data Structures added, and the file they were added to.   
+          ========================================================
+
+		- rpclock structure in system.h
+		- rpccondition structure in system.h
+		- ipt class in system.h
+		- pageTable class in system.h
+
+
+
+            + Functions added
+          =================
+
+		+ exception.cc
+
+			- void HandlePageFault(int badVirtAddr)
+
+		+ nettest.cc
+	
+
+			-void createRemoteLock(char *lockname,int from);  
+
+			-void AcquireRemoteLock(temp,inPktHdr.from);  
+
+			-ReleaseRemoteLock(temp,inPktHdr.from);  
+
+			-DestroyRemoteLock(temp,inPktHdr.from);  
+
+			-CreateRemoteCondition(name,inPktHdr.from);  
+
+			-DestroyRemoteCondition(temp,inPktHdr.from);  
+
+			-WaitRemoteCondition(conditionNum,lockNum,inPktHdr.from);
+
+			-SignalRemoteCondition(conditionNum,lockNum,inPktHdr.from);
+
+			-BroadcastRemoteCondition(conditionNum,lockNum,inPktHdr.from);
+
+
+
+
+          + Functions modified
+          ====================
+
+
+		+ exception.cc
+
+			- int CreateCondition_Syscall(int dummyName,int nameLen)
+
+            		- int DestroyCondition_Syscall(int ref)
+
+            		- int Release_Syscall(int numb)
+
+            		- int SignalCondition_Syscall(int CondRef, int LockRef)
+
+			- int BroadcastCondition_Syscall(int CondRef, int LockRef)
+
+            		- int CreateLock_Syscall(int dummyName,int nameLen)
+
+             		- int DestroyLock_Syscall(int ref)
+
+            		- int AcquireLock_Syscall(int ref)
+
+            		- int ReleaseLock_Syscall(int ref)
+
+			- void ExceptionHandler(ExceptionType which)
+
+V. Testing:
+===========
+
+
+run gmake in vm directory
+
+	
+                                            PART I and II:
+                                           ****************
+
+**************  NOTE TEST 1 - 10 ARE TEST CASES FROM PROJECT 2	*************************************
+
+Part-I and Part-II
+******************
+
+Test1
+-----
+This is  a test to CreateLock and DestroyLock system calls in this I am creating a lock and detroying it and 
+I am creating a new lock and i check whether the destroyed lock reference is re-used
+
+	To run: nachos -P RAND -x ../test/locktest1
+
+Test2
+-----
+This a test to AcquireLock, RelaseLock and DestroyLock. This a whole range of -ve test
+
+	To run: nachos -P RAND -x ../test/locktest2
+
+Test3
+-----
+In this test a proces tries to acquire a lock which it does not create.
+
+	To run: nachos -P RAND -x ../test/locktest3
+
+Test4
+-----
+In this test I am try to destroy a lock when there are thread waiting in its lockqueue
+
+	To run: nachos -P RAND -x ../test/locktest6
+
+
+Test5
+------
+In this test I am try creating a new condition variable and destroy it and then create a new condition variable
+ans check whether the reference is re-used or not
+
+	To run: nachos -P FIFO -x ../test/cvtest1
+
+Test6
+------
+
+This a test to WaitCondition, SignalCondition and BroadcastCondition. This a whole range of -ve test
+
+	To run: nachos -P FIFO -x ../test/cvtest2
+
+Test7
+-----
+In this a test to WaitCodnition and BroadcastCondition system calls
+
+	To trun: nachos -P RAND -x ../test/cvtest3
+
+Test8
+------
+In this test we are trying to access the condition vriable which is outside the address space
+
+	To run: nachos -P FIFO  -x ../test/cvtest5
+
+Test9
+------
+In this test we trying to destory  a condtion variable when threads are there in the waitqueue of the condtion variable
+
+	To run: nachos -P RAND -x ../test/cvtest6
+
+Test10
+------
+In this test we are testing the wait and signal system calls
+	
+	To run: nachos -P RAND -x ../test/cvtest7
+
+**************  NOTE TEST 1 - 10 ARE TEST CASES FROM PROJECT 2	*************************************
+
+Test11
+------
+In this test we are testing vm by execing two matmults
+	
+	To run: nachos -P RAND -x ../test/execMatmult
+
+
+Test12
+------
+In this test we are testing vm by execing two sort
+	
+	To run: nachos -P RAND -x ../test/execSort
+
+
+Test13
+------
+In this test we are testing vm by execing one matmult and one sort
+	
+	To run: nachos -P RAND -x ../test/execMatMultSort
+
+Test14
+------
+In this test we are testing vm by forking two matmults
+	
+	To run: nachos -P RAND -x ../test/forkMatmult
+
+Test15
+------
+In this test we are testing vm by forking two sorts
+	
+	To run: nachos -P RAND -x ../test/forkSort
+
+Test16
+------
+In this test we are testing vm by forking one matmult and one sort
+	
+	To run: nachos -P RAND -x ../test/forkMatmultsort
+
+************* NOTE USE ANY VALUE OF -rs INTEGERS FOR ANY OF THE ABOVE TEST CASES ***************
+************* WHEN TESTING SORT THE PROGRAM SOME UNUSUAL LONGER TIME THAN NORMAL PROGRMAS SO PLS BE PATIENT ************
+
+Part-III
+*********
+
+	+ Here we open multiple instances of Unix shell for testing...
+	+ one intance should be the server, use the command 'nachos -server' to start the nachos server.
+	+ For all the below test cases its assumed that the server is started 
+
+
+Test17
+------
+
+	In this test we are trying to see if the create,acquire,relase and destroy lock RPC calls work 
+
+	To run : nachos -m 1 -x ../test/testRpcLock
+
+Test18
+------
+
+	In this test we are trying to acquire relase and destroy a lock which is not yet created.
+
+	To run : nachos -m 1 -x ../test/testRpcLock1
+
+Test19
+------
+
+	In this test one client instance of nachos created a lock acquires it and exits
+	another client intance of nachos tries to release, destroy which it cannot do and gets a -ve ack from server
+	and finally tries to acquire and goes to wait
+
+	Note : Run the programs in this same order.
+
+	To run : nachos -m 1 -x ../test/testRpcLock2
+
+	To run : nachos -m 2 -x ../test/testRpcLock3
+
+Test20
+------
+	
+	In this test we are checking create and destroy condition remote procedure calls.
+
+	To run : nachos -m 1 -x ../test/testRpcCondition1
+
+Test21
+-------
+
+	In this test we are checking the wait and signal condition remote procedure calls
+
+	To run : nachos -m 1 -x ../test/testRpcCondition
+
+	To run : nachos -m 2 -x ../test/testRpcCondition2
+
+	Note:****** THE ABOVE TWO PROGRAMS SHOULD BE RUN IN THE SAME ORDER. THE FIRST PROGRAMS WAITS ON A CONDITION 
+		AND WHEN THE 2ND PROGRAM IS SUN IT SIGNALS THE FIRT PROGRAM.************
+
+Test22
+-------
+
+	In this test we are chekcing the wait and broadcast condition remote procedure calls
+
+	To run : nachos -m 1 -x ../test/testRpcCondition
+
+	To run : nachos -m 2 -x ../test/testRpcCondition
+
+	To run : nachos -m 3 -x ../test/testRpcCondition3
+
+	Note:****** THE ABOVE THREE PROGRAMS SHOULD BE RUN IN THE SAME ORDER. THE FIRST PROGRAMS WAITS ON A CONDITION SO AS THE 2ND PROGRAMS
+		AND WHEN THE 3RD PROGRAM IS SUN IT BROADCAST THE 1ST AND 2ND PROGRAMS PROGRAM.************
+
+
+
+
+
+	
+
+
+
+
+
