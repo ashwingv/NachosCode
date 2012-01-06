@@ -1,0 +1,11 @@
+This is a project that I did as a part of a course work @ USC.
+• Implemented different subsystems of NACHOS operating system like thread synchronization, multiprogramming, virtual memory, networking
+and distributed OS.
+• Implementation also involved locks, condition variables for multi-threading, TLB, IPT and page table, RPC and SWAP File and systems calls like
+Fork, Exec and Exit.
+
+This project was little different from the rest,Here I have to first read and understand  the code of a basic operating system,
+And add code to improve on it. After completeing this project, I feeling confident that I can read someone elses code 
+and understand and improve on it.
+
+The feeling of implementing a whole operating system was amazing during the course of this project.
